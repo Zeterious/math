@@ -6,172 +6,167 @@
 #include <string>
 #include <algorithm>
 
-struct State {
+struct BodyState {
     double x, y, vx, vy;
+};
 
-    State operator+(const State& other) const {
-        return { x + other.x, y + other.y, vx + other.vx, vy + other.vy };
+struct SystemState {
+    BodyState b1, b2, b3;
+
+    SystemState operator+(const SystemState& other) const {
+        return {
+            {b1.x + other.b1.x, b1.y + other.b1.y, b1.vx + other.b1.vx, b1.vy + other.b1.vy},
+            {b2.x + other.b2.x, b2.y + other.b2.y, b2.vx + other.b2.vx, b2.vy + other.b2.vy},
+            {b3.x + other.b3.x, b3.y + other.b3.y, b3.vx + other.b3.vx, b3.vy + other.b3.vy}
+        };
     }
-    State operator-(const State& other) const {
-        return { x - other.x, y - other.y, vx - other.vx, vy - other.vy };
+    SystemState operator-(const SystemState& other) const {
+        return {
+            {b1.x - other.b1.x, b1.y - other.b1.y, b1.vx - other.b1.vx, b1.vy - other.b1.vy},
+            {b2.x - other.b2.x, b2.y - other.b2.y, b2.vx - other.b2.vx, b2.vy - other.b2.vy},
+            {b3.x - other.b3.x, b3.y - other.b3.y, b3.vx - other.b3.vx, b3.vy - other.b3.vy}
+        };
     }
-    State operator*(double scalar) const {
-        return { x * scalar, y * scalar, vx * scalar, vy * scalar };
+    SystemState operator*(double scalar) const {
+        return {
+            {b1.x * scalar, b1.y * scalar, b1.vx * scalar, b1.vy * scalar},
+            {b2.x * scalar, b2.y * scalar, b2.vx * scalar, b2.vy * scalar},
+            {b3.x * scalar, b3.y * scalar, b3.vx * scalar, b3.vy * scalar}
+        };
     }
 };
 
-
-State derivatives(double t, const State& s) {
-    double r3 = std::pow(s.x * s.x + s.y * s.y, 1.5);
+void add_gravity(const BodyState& A, const BodyState& B, double& ax, double& ay) {
+    double dx = B.x - A.x;
+    double dy = B.y - A.y;
+    double r2 = dx * dx + dy * dy;
+    double r3 = r2 * std::sqrt(r2);
     if (r3 < 1e-6) r3 = 1e-6;
+    ax += dx / r3;
+    ay += dy / r3;
+}
 
-    State d;
-    d.x = s.vx;
-    d.y = s.vy;
-    d.vx = -s.x / r3;
-    d.vy = -s.y / r3;
+SystemState derivatives(double t, const SystemState& s) {
+    SystemState d;
+    
+    d.b1.x = s.b1.vx; d.b1.y = s.b1.vy;
+    d.b2.x = s.b2.vx; d.b2.y = s.b2.vy;
+    d.b3.x = s.b3.vx; d.b3.y = s.b3.vy;
+
+    d.b1.vx = 0; d.b1.vy = 0;
+    add_gravity(s.b1, s.b2, d.b1.vx, d.b1.vy);
+    add_gravity(s.b1, s.b3, d.b1.vx, d.b1.vy);
+
+    d.b2.vx = 0; d.b2.vy = 0;
+    add_gravity(s.b2, s.b1, d.b2.vx, d.b2.vy);
+    add_gravity(s.b2, s.b3, d.b2.vx, d.b2.vy);
+
+    d.b3.vx = 0; d.b3.vy = 0;
+    add_gravity(s.b3, s.b1, d.b3.vx, d.b3.vy);
+    add_gravity(s.b3, s.b2, d.b3.vx, d.b3.vy);
+
     return d;
 }
 
-// 1. Метод RK4 (Классический Рунге-Кутта 4-го порядка)
-State stepRK4(double t, const State& s, double h) {
-    State k1 = derivatives(t, s);
-    State k2 = derivatives(t + h / 2.0, s + k1 * (h / 2.0));
-    State k3 = derivatives(t + h / 2.0, s + k2 * (h / 2.0));
-    State k4 = derivatives(t + h, s + k3 * h);
+// 1. Метод RK4 (Классический Рунге-Кутта 4-го порядка).
+SystemState stepRK4(double t, const SystemState& s, double h) {
+    SystemState k1 = derivatives(t, s);
+    SystemState k2 = derivatives(t + h/2.0, s + k1 * (h/2.0));
+    SystemState k3 = derivatives(t + h/2.0, s + k2 * (h/2.0));
+    SystemState k4 = derivatives(t + h, s + k3 * h);
     return s + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0);
 }
 
 // 2. Метод RK3/8 (Правило 3/8 Рунге-Кутта 4-го порядка)
-State stepRK38(double t, const State& s, double h) {
-    State k1 = derivatives(t, s);
-    State k2 = derivatives(t + h / 3.0, s + k1 * (h / 3.0));
-    State k3 = derivatives(t + 2.0 * h / 3.0, s + k1 * (-h / 3.0) + k2 * h);
-    State k4 = derivatives(t + h, s + k1 * h - k2 * h + k3 * h);
+SystemState stepRK38(double t, const SystemState& s, double h) {
+    SystemState k1 = derivatives(t, s);
+    SystemState k2 = derivatives(t + h/3.0, s + k1 * (h/3.0));
+    SystemState k3 = derivatives(t + 2.0*h/3.0, s + k1 * (-h/3.0) + k2 * h);
+    SystemState k4 = derivatives(t + h, s + k1 * h - k2 * h + k3 * h);
     return s + (k1 + k2 * 3.0 + k3 * 3.0 + k4) * (h / 8.0);
 }
 
 // 3. Метод Рунге-Кутта 3-го порядка (Метод Кутты)
-State stepRK3(double t, const State& s, double h) {
-    State k1 = derivatives(t, s);
-    State k2 = derivatives(t + h / 2.0, s + k1 * (h / 2.0));
-    State k3 = derivatives(t + h, s + k1 * (-h) + k2 * 2.0 * h);
+SystemState stepRK3(double t, const SystemState& s, double h) {
+    SystemState k1 = derivatives(t, s);
+    SystemState k2 = derivatives(t + h/2.0, s + k1 * (h/2.0));
+    SystemState k3 = derivatives(t + h, s + k1 * (-h) + k2 * 2.0 * h);
     return s + (k1 + k2 * 4.0 + k3) * (h / 6.0);
 }
 
 // 4. DOPRI5 (Дорман-Принс 5(4)) с адаптивным шагом
-State stepDOPRI5(double t, const State& s, double& h, double tolerance) {
-    const double c2 = 1.0 / 5.0, c3 = 3.0 / 10.0, c4 = 4.0 / 5.0, c5 = 8.0 / 9.0, c6 = 1.0;
-
+SystemState stepDOPRI5(double t, const SystemState& s, double& h, double tolerance) {
+    const double c2 = 1.0/5.0, c3 = 3.0/10.0, c4 = 4.0/5.0, c5 = 8.0/9.0, c6 = 1.0;
     while (true) {
-        State k1 = derivatives(t, s);
-        State k2 = derivatives(t + c2 * h, s + k1 * (h * (1.0 / 5.0)));
-        State k3 = derivatives(t + c3 * h, s + k1 * (h * (3.0 / 40.0)) + k2 * (h * (9.0 / 40.0)));
-        State k4 = derivatives(t + c4 * h, s + k1 * (h * (44.0 / 45.0)) - k2 * (h * (56.0 / 15.0)) + k3 * (h * (32.0 / 9.0)));
-        State k5 = derivatives(t + c5 * h, s + k1 * (h * (19372.0 / 6561.0)) - k2 * (h * (25360.0 / 2187.0)) + k3 * (h * (64448.0 / 6561.0)) - k4 * (h * (212.0 / 729.0)));
-        State k6 = derivatives(t + c6 * h, s + k1 * (h * (9017.0 / 3168.0)) - k2 * (h * (355.0 / 33.0)) + k3 * (h * (46732.0 / 5247.0)) + k4 * (h * (49.0 / 176.0)) - k5 * (h * (5103.0 / 18656.0)));
+        SystemState k1 = derivatives(t, s);
+        SystemState k2 = derivatives(t + c2*h, s + k1 * (h * (1.0/5.0)));
+        SystemState k3 = derivatives(t + c3*h, s + k1 * (h * (3.0/40.0)) + k2 * (h * (9.0/40.0)));
+        SystemState k4 = derivatives(t + c4*h, s + k1 * (h * (44.0/45.0)) - k2 * (h * (56.0/15.0)) + k3 * (h * (32.0/9.0)));
+        SystemState k5 = derivatives(t + c5*h, s + k1 * (h * (19372.0/6561.0)) - k2 * (h * (25360.0/2187.0)) + k3 * (h * (64448.0/6561.0)) - k4 * (h * (212.0/729.0)));
+        SystemState k6 = derivatives(t + c6*h, s + k1 * (h * (9017.0/3168.0)) - k2 * (h * (355.0/33.0)) + k3 * (h * (46732.0/5247.0)) + k4 * (h * (49.0/176.0)) - k5 * (h * (5103.0/18656.0)));
         
-        State s_next = s + (k1 * (35.0 / 384.0) + k3 * (500.0 / 1113.0) + k4 * (125.0 / 192.0) - k5 * (2187.0 / 6784.0) + k6 * (11.0 / 84.0)) * h;
+        SystemState s_next = s + (k1 * (35.0/384.0) + k3 * (500.0/1113.0) + k4 * (125.0/192.0) - k5 * (2187.0/6784.0) + k6 * (11.0/84.0)) * h;
+        SystemState k7 = derivatives(t + h, s_next);
         
-        State k7 = derivatives(t + h, s_next);
+        SystemState error = (k1 * (71.0/57600.0) - k3 * (71.0/16695.0) + k4 * (71.0/1920.0) - k5 * (17253.0/339200.0) + k6 * (22.0/525.0) - k7 * (1.0/40.0)) * h;
         
-        State error = (k1 * (71.0 / 57600.0) - k3 * (71.0 / 16695.0) + k4 * (71.0 / 1920.0) - k5 * (17253.0 / 339200.0) + k6 * (22.0 / 525.0) - k7 * (1.0 / 40.0)) * h;
+        double err_norm = std::sqrt(
+            error.b1.x*error.b1.x + error.b1.y*error.b1.y + error.b2.x*error.b2.x + error.b2.y*error.b2.y + error.b3.x*error.b3.x + error.b3.y*error.b3.y
+        );
         
-        double err_norm = std::sqrt(error.x * error.x + error.y * error.y + error.vx * error.vx + error.vy * error.vy);
         if (err_norm <= tolerance) {
-                    
-                    double scale = 0.9 * std::pow(tolerance / (err_norm + 1e-16), 0.2);
-                    scale = std::max(0.1, std::min(5.0, scale));
-                    h *= scale;
-                    return s_next;
-                }
-                else {
-                    
-                    double scale = 0.9 * std::pow(tolerance / err_norm, 0.25);
-                    scale = std::max(0.1, std::min(0.5, scale));
-                    h *= scale;
-                }
-            }
+            double scale = 0.9 * std::pow(tolerance / (err_norm + 1e-16), 0.2);
+            h *= std::max(0.1, std::min(5.0, scale));
+            return s_next;
         }
-
-        
-        double compute_abs_error(const State& current, const State& reference) {
-            double dx = current.x - reference.x;
-            double dy = current.y - reference.y;
-            return std::sqrt(dx * dx + dy * dy);
-        }
+        h *= std::max(0.1, std::min(0.5, 0.9 * std::pow(tolerance / err_norm, 0.25)));
+    }
+}
 
 int main() {
-    
     std::cout << std::scientific << std::setprecision(17);
-    
-    
-    double t_end = 5.0;
-    double h_fixed = 0.01;
-    double ref_tolerance = 1e-12;
-    
+
+    double t_end = 6.3259;
+    double h_fixed = 0.005;
+    double ref_tolerance = 1e-13;
+
     std::ifstream config("config.txt");
     if (config.is_open()) {
         config >> t_end >> h_fixed >> ref_tolerance;
         config.close();
     }
-    else {
-        std::cout << "# Предупреждение: Файл config.txt не найден. Исполняются параметры по умолчанию.\n";
-    }
-    
-    
-    State init_state = { 1.0, 0.0, 0.0, 0.5 };
-    
-    
-    struct ReferencePoint {
-        double t;
-        State state;
+
+    double x3 = 0.97000436, y3 = -0.24308753;
+    double vx3 = -0.46620531, vy3 = -0.43236573;
+
+    SystemState init_state = {
+        { -x3, -y3, vx3, vy3 },
+        { 0.0, 0.0, -2.0 * vx3, -2.0 * vy3 },
+        { x3, y3, vx3, vy3 }
     };
+
+    struct ReferencePoint { double t; SystemState state; };
     std::vector<ReferencePoint> ref_path;
     
     double t = 0.0;
-    State s_ref = init_state;
+    SystemState s_ref = init_state;
     double h_adaptive = h_fixed;
     
-    ref_path.push_back({ t, s_ref });
+    ref_path.push_back({t, s_ref});
     while (t < t_end) {
         if (t + h_adaptive > t_end) h_adaptive = t_end - t;
         s_ref = stepDOPRI5(t, s_ref, h_adaptive, ref_tolerance);
         t += h_adaptive;
-        ref_path.push_back({ t, s_ref });
+        ref_path.push_back({t, s_ref});
+    }
+
+    std::cout << "t,b1_x,b1_y,b2_x,b2_y,b3_x,b3_y\n";
+    for (const auto& pt : ref_path) {
+        std::cout << pt.t << ","
+                  << pt.state.b1.x << "," << pt.state.b1.y << ","
+                  << pt.state.b2.x << "," << pt.state.b2.y << ","
+                  << pt.state.b3.x << "," << pt.state.b3.y << "\n";
     }
     
-    std::cout << "# Сгенерировано эталонных точек: " << ref_path.size() << "\n";
-    std::cout << "------------------------------------------------------------------------------------------------------------------------\n";
-    std::cout << "Time \t\t Method \t Absolute Error \t Relative Error\n";
-    std::cout << "------------------------------------------------------------------------------------------------------------------------\n";
-    
-   
-    State s_rk4 = init_state;
-    State s_rk38 = init_state;
-    State s_rk3 = init_state;
-    State s_dopri5_test = init_state;
-    
-    double h_test = h_fixed;
-    
-    for (size_t i = 0; i < ref_path.size() - 1; ++i) {
-        double current_t = ref_path[i].t;
-        double dt = ref_path[i + 1].t - current_t;
-        State ref_next = ref_path[i + 1].state;
-        double ref_norm = std::sqrt(ref_next.x * ref_next.x + ref_next.y * ref_next.y);
-        
-        s_rk4 = stepRK4(current_t, s_rk4, dt);
-        s_rk38 = stepRK38(current_t, s_rk38, dt);
-        s_rk3 = stepRK3(current_t, s_rk3, dt);
-        s_dopri5_test = stepDOPRI5(current_t, s_dopri5_test, h_test, 1e-5);
-        
-        
-        if (i % 10 == 0 || i == ref_path.size() - 2) {
-            double abs_rk4 = compute_abs_error(s_rk4, ref_next);
-            double abs_rk38 = compute_abs_error(s_rk38, ref_next);
-            double abs_rk3 = compute_abs_error(s_rk3, ref_next);
-            
-            std::cout << current_t + dt << "\t RK4 \t " << abs_rk4 << "\t " << (abs_rk4 / ref_norm) << "\n";
-        }
-    }
+    return 0;
 }
