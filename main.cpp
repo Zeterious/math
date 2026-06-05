@@ -46,7 +46,7 @@ void add_gravity(const BodyState& A, const BodyState& B, double& ax, double& ay)
     ay += dy / r3;
 }
 
-SystemState derivatives(double t, const SystemState& s) {
+SystemState derivatives(const SystemState& s) {
     SystemState d;
     
     d.b1.x = s.b1.vx; d.b1.y = s.b1.vy;
@@ -69,44 +69,44 @@ SystemState derivatives(double t, const SystemState& s) {
 }
 
 // 1. Метод RK4 (Классический Рунге-Кутта 4-го порядка).
-SystemState stepRK4(double t, const SystemState& s, double h) {
-    SystemState k1 = derivatives(t, s);
-    SystemState k2 = derivatives(t + h/2.0, s + k1 * (h/2.0));
-    SystemState k3 = derivatives(t + h/2.0, s + k2 * (h/2.0));
-    SystemState k4 = derivatives(t + h, s + k3 * h);
+SystemState stepRK4(const SystemState& s, double h) {
+    SystemState k1 = derivatives(s);
+    SystemState k2 = derivatives(s + k1 * (h/2.0));
+    SystemState k3 = derivatives(s + k2 * (h/2.0));
+    SystemState k4 = derivatives(s + k3 * h);
     return s + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0);
 }
 
 // 2. Метод RK3/8 (Правило 3/8 Рунге-Кутта 4-го порядка)
-SystemState stepRK38(double t, const SystemState& s, double h) {
-    SystemState k1 = derivatives(t, s);
-    SystemState k2 = derivatives(t + h/3.0, s + k1 * (h/3.0));
-    SystemState k3 = derivatives(t + 2.0*h/3.0, s + k1 * (-h/3.0) + k2 * h);
-    SystemState k4 = derivatives(t + h, s + k1 * h - k2 * h + k3 * h);
+SystemState stepRK38(const SystemState& s, double h) {
+    SystemState k1 = derivatives(s);
+    SystemState k2 = derivatives(s + k1 * (h/3.0));
+    SystemState k3 = derivatives(s + k1 * (-h/3.0) + k2 * h);
+    SystemState k4 = derivatives( s + k1 * h - k2 * h + k3 * h);
     return s + (k1 + k2 * 3.0 + k3 * 3.0 + k4) * (h / 8.0);
 }
 
 // 3. Метод Рунге-Кутта 3-го порядка (Метод Кутты)
-SystemState stepRK3(double t, const SystemState& s, double h) {
-    SystemState k1 = derivatives(t, s);
-    SystemState k2 = derivatives(t + h/2.0, s + k1 * (h/2.0));
-    SystemState k3 = derivatives(t + h, s + k1 * (-h) + k2 * 2.0 * h);
+SystemState stepRK3(const SystemState& s, double h) {
+    SystemState k1 = derivatives(s);
+    SystemState k2 = derivatives(s + k1 * (h/2.0));
+    SystemState k3 = derivatives(s + k1 * (-h) + k2 * 2.0 * h);
     return s + (k1 + k2 * 4.0 + k3) * (h / 6.0);
 }
 
 // 4. DOPRI5 (Дорман-Принс 5(4)) с адаптивным шагом
-SystemState stepDOPRI5(double t, const SystemState& s, double& h, double tolerance) {
+SystemState stepDOPRI5(const SystemState& s, double& h, double tolerance, double& h_accepted) {
     const double c2 = 1.0/5.0, c3 = 3.0/10.0, c4 = 4.0/5.0, c5 = 8.0/9.0, c6 = 1.0;
     while (true) {
-        SystemState k1 = derivatives(t, s);
-        SystemState k2 = derivatives(t + c2*h, s + k1 * (h * (1.0/5.0)));
-        SystemState k3 = derivatives(t + c3*h, s + k1 * (h * (3.0/40.0)) + k2 * (h * (9.0/40.0)));
-        SystemState k4 = derivatives(t + c4*h, s + k1 * (h * (44.0/45.0)) - k2 * (h * (56.0/15.0)) + k3 * (h * (32.0/9.0)));
-        SystemState k5 = derivatives(t + c5*h, s + k1 * (h * (19372.0/6561.0)) - k2 * (h * (25360.0/2187.0)) + k3 * (h * (64448.0/6561.0)) - k4 * (h * (212.0/729.0)));
-        SystemState k6 = derivatives(t + c6*h, s + k1 * (h * (9017.0/3168.0)) - k2 * (h * (355.0/33.0)) + k3 * (h * (46732.0/5247.0)) + k4 * (h * (49.0/176.0)) - k5 * (h * (5103.0/18656.0)));
+        SystemState k1 = derivatives(s);
+        SystemState k2 = derivatives(s + k1 * (h * (1.0/5.0)));
+        SystemState k3 = derivatives(s + k1 * (h * (3.0/40.0)) + k2 * (h * (9.0/40.0)));
+        SystemState k4 = derivatives(s + k1 * (h * (44.0/45.0)) - k2 * (h * (56.0/15.0)) + k3 * (h * (32.0/9.0)));
+        SystemState k5 = derivatives(s + k1 * (h * (19372.0/6561.0)) - k2 * (h * (25360.0/2187.0)) + k3 * (h * (64448.0/6561.0)) - k4 * (h * (212.0/729.0)));
+        SystemState k6 = derivatives(s + k1 * (h * (9017.0/3168.0)) - k2 * (h * (355.0/33.0)) + k3 * (h * (46732.0/5247.0)) + k4 * (h * (49.0/176.0)) - k5 * (h * (5103.0/18656.0)));
         
         SystemState s_next = s + (k1 * (35.0/384.0) + k3 * (500.0/1113.0) + k4 * (125.0/192.0) - k5 * (2187.0/6784.0) + k6 * (11.0/84.0)) * h;
-        SystemState k7 = derivatives(t + h, s_next);
+        SystemState k7 = derivatives(s_next);
         
         SystemState error = (k1 * (71.0/57600.0) - k3 * (71.0/16695.0) + k4 * (71.0/1920.0) - k5 * (17253.0/339200.0) + k6 * (22.0/525.0) - k7 * (1.0/40.0)) * h;
         
@@ -115,6 +115,7 @@ SystemState stepDOPRI5(double t, const SystemState& s, double& h, double toleran
         );
         
         if (err_norm <= tolerance) {
+            h_accepted = h;
             double scale = 0.9 * std::pow(tolerance / (err_norm + 1e-16), 0.2);
             h *= std::max(0.1, std::min(5.0, scale));
             return s_next;
@@ -155,8 +156,11 @@ int main() {
     ref_path.push_back({t, s_ref});
     while (t < t_end) {
         if (t + h_adaptive > t_end) h_adaptive = t_end - t;
-        s_ref = stepDOPRI5(t, s_ref, h_adaptive, ref_tolerance);
-        t += h_adaptive;
+        
+        double h_actual = h_adaptive;
+        s_ref = stepDOPRI5(s_ref, h_adaptive, ref_tolerance, h_actual);
+        t += h_actual;
+        
         ref_path.push_back({t, s_ref});
     }
 
